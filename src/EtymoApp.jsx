@@ -83,10 +83,35 @@ Respond with a JSON object in this exact format:
   "pronunciation": "phonetic pronunciation guide"
 }
 
-Your entire response MUST be a single, valid JSON object. DO NOT include any text outside of the JSON structure, including backticks.`;
+Your entire response MUST be a single, valid JSON object. DO NOT include any text outside of the JSON structure, including backticks or markdown formatting.`;
 
-      const response = await window.claude.complete(prompt);
-      const parsedAnalysis = JSON.parse(response);
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.REACT_APP_OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [{ 
+            role: 'user', 
+            content: prompt 
+          }],
+          temperature: 0.7,
+          max_tokens: 2000
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const aiResponse = data.choices[0].message.content;
+      
+      // Clean up response in case GPT-4o includes markdown formatting
+      const cleanedResponse = aiResponse.replace(/```json\s*|\s*```/g, '').trim();
+      const parsedAnalysis = JSON.parse(cleanedResponse);
       
       // Ensure arrays exist with fallback values
       const safeAnalysis = {
@@ -106,7 +131,13 @@ Your entire response MUST be a single, valid JSON object. DO NOT include any tex
       
     } catch (err) {
       console.error('Error analyzing word:', err);
-      setError('Failed to analyze the word. Please try again.');
+      if (err.message.includes('OpenAI API error')) {
+        setError(`API Error: ${err.message}. Please check your OpenAI API key.`);
+      } else if (err.name === 'SyntaxError') {
+        setError('Failed to parse analysis. Please try again.');
+      } else {
+        setError('Failed to analyze the word. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
